@@ -1,0 +1,18 @@
+[Unit]
+Description=AI Companion Telegram Bot
+After=network.target
+
+[Service]
+# Change these two to match your server
+User=youruser
+WorkingDirectory=/home/youruser/ai-companion-bot
+
+ExecStart=/home/youruser/ai-companion-bot/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=5
+
+# Reads TELEGRAM_BOT_TOKEN, OPENROUTER_API_KEY, WEBHOOK_URL, etc.
+EnvironmentFile=/home/youruser/ai-companion-bot/.env
+
+[Install]
+WantedBy=multi-user.target

@@ -10,7 +10,6 @@ OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 MAX_TOKENS = 1024
 
 client = httpx.AsyncClient(
-    base_url=OPENROUTER_URL,
     headers={
         "Authorization": f"Bearer {config.OPENROUTER_API_KEY}",
         "HTTP-Referer": "https://github.com/",
@@ -29,7 +28,7 @@ async def _call_claude(messages: list[dict]) -> str:
     }
 
     try:
-        response = await client.post("", json=payload)
+        response = await client.post(OPENROUTER_URL, json=payload)
         response.raise_for_status()
     except httpx.HTTPStatusError as e:
         logger.exception("OpenRouter API error: %s", e)

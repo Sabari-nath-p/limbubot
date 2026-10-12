@@ -1,7 +1,7 @@
 # AI Companion Telegram Bot
 
 A FastAPI app that runs an "AI girlfriend" style companion chatbot over Telegram,
-powered by the Claude API. Features:
+powered by any model available through [OpenRouter](https://openrouter.ai). Features:
 
 - **Personality from a file** — the system prompt lives in [`prompt.txt`](prompt.txt).
   Edit it any time (no restart needed) to change the personality.
@@ -67,6 +67,68 @@ For a real deployment, point `WEBHOOK_URL` at your server's domain instead of ng
 > on startup, and the webhook mode will overwrite it again, so switching
 > between them is safe, just don't run both at once.
 
+## 4. Deploying to a VPS (nginx + HTTPS)
+
+This assumes an Ubuntu/Debian-style VPS with a domain's DNS A record already
+pointed at the server's IP.
+
+1. **Get the code onto the server** and set it up like in step 2 above
+   (venv, `pip install -r requirements.txt`, `.env` filled in). Pick a non-root
+   user to run it as — don't run the app as root.
+
+2. **Open firewall ports** for HTTP/HTTPS (SSH should already be open):
+
+   ```bash
+   sudo ufw allow 80,443/tcp
+   ```
+
+3. **Install the systemd service** so the bot survives reboots/crashes.
+   Copy [`deploy/ai-companion-bot.service`](deploy/ai-companion-bot.service),
+   edit the `User`, `WorkingDirectory`, and `ExecStart` paths to match your
+   server, then:
+
+   ```bash
+   sudo cp deploy/ai-companion-bot.service /etc/systemd/system/
+   sudo systemctl daemon-reload
+   sudo systemctl enable --now ai-companion-bot
+   sudo systemctl status ai-companion-bot   # should say "active (running)"
+   journalctl -u ai-companion-bot -f        # tail logs
+   ```
+
+   The service binds uvicorn to `127.0.0.1:8000` (not exposed directly to the
+   internet) — nginx in front of it handles the public-facing TLS traffic.
+
+4. **Install nginx + certbot** and set up the reverse proxy:
+
+   ```bash
+   sudo apt install nginx certbot python3-certbot-nginx
+   sudo cp deploy/nginx-ai-companion-bot.conf /etc/nginx/sites-available/ai-companion-bot
+   # edit server_name in that file to your actual domain
+   sudo ln -s /etc/nginx/sites-available/ai-companion-bot /etc/nginx/sites-enabled/
+   sudo nginx -t && sudo systemctl reload nginx
+   sudo certbot --nginx -d your-domain.com   # issues the cert and rewrites the config for HTTPS
+   ```
+
+5. **Point the bot at its public URL.** In `.env` on the server, set:
+
+   ```
+   WEBHOOK_URL=https://your-domain.com
+   WEBHOOK_SECRET=<a long random string>
+   ```
+
+   Then restart the service so it registers the webhook with Telegram:
+
+   ```bash
+   sudo systemctl restart ai-companion-bot
+   ```
+
+6. **Verify**: `curl https://your-domain.com/health` should return
+   `{"status":"ok"}`, and messaging the bot on Telegram should get a reply.
+   `journalctl -u ai-companion-bot -f` is the first place to look if not.
+
+> Make sure `poll.py` is **not** also running anywhere — only one of
+> polling/webhook mode should be active at a time (see note in step 3 above).
+
 ## Customizing the personality
 
 Edit [`prompt.txt`](prompt.txt) — it's read fresh on every message, so changes
@@ -102,10 +164,11 @@ ai-companion-bot/
 │   ├── main.py          # FastAPI app + webhook endpoint
 │   ├── config.py        # env var / settings loading
 │   ├── db.py             # SQLite storage (users, message history, follow-up state)
-│   ├── llm.py             # Claude API calls
+│   ├── llm.py             # OpenRouter API calls
 │   ├── telegram.py       # Telegram Bot API calls (sendMessage, webhook, getUpdates)
 │   ├── scheduler.py       # APScheduler-based follow-up escalation
 │   └── handlers.py        # shared logic for handling an incoming Telegram update
+├── deploy/               # systemd + nginx config for VPS deployment
 ├── requirements.txt
 └── .env.example
 ```
